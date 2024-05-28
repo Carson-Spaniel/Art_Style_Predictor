@@ -31,8 +31,9 @@ else:
     dataset.save(dataset_file)
 
 # Define a function to preprocess the data for TensorFlow
-def preprocess_data(image, label):
-    image = tf.image.resize(image, (150, 150))  # Resize images to (150, 150)
+def preprocess_data(image, label, target_shape=(150, 150)):
+    # Resize images to the target shape
+    image = tf.image.resize(image, target_shape)
     image = tf.cast(image, tf.float32) / 255.0  # Normalize pixel values to [0, 1]
     return image, label
 
@@ -43,8 +44,12 @@ def get_dataset_size(dataset):
         size += 1
     return size
 
+for data in dataset.take(1):
+    print("Image:", data['images'].shape[0])
+    print("Label:", data['labels'])
+
 # Calculate the size of training and validation sets
-print('Calculating dataset size...')
+# print('Calculating dataset size...')
 dataset_size = get_dataset_size(dataset)
 
 print('Calculating training size...')
@@ -62,12 +67,18 @@ print('Splitting validation dataset...')
 validation_dataset = dataset.skip(train_size)
 
 
+# Filter out None values
+print('Filtering dataset...')
+train_dataset = train_dataset.filter(lambda x: x['images'].shape[0] is not None)
+validation_dataset = validation_dataset.filter(lambda x: x['images'].shape[0] is not None)
+
+
 # Map the preprocess_data function to the train and validation splits
 print('Creating training dataset...')
-train_dataset = train_dataset.map(lambda x: preprocess_data(*x))
+train_dataset = train_dataset.map(lambda x: preprocess_data(x['images'].shape,x['labels']))
 
 print('Creating validation dataset...')
-validation_dataset = validation_dataset.map(lambda x: preprocess_data(*x))
+validation_dataset = validation_dataset.map(lambda x: preprocess_data(x['images'].shape,x['labels']))
 
 
 # Define the CNN model
