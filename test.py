@@ -118,7 +118,7 @@ except IOError:
     unique_labels = np.unique(y)
     label_map = {label: idx for idx, label in enumerate(unique_labels)}
 
-    f = open("label.py", "a")
+    f = open("label.py", "w")
     f.write(f"label_map = {label_map}")
     f.close()
 
