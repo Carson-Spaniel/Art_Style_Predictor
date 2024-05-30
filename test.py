@@ -1,35 +1,45 @@
-import os
 import requests
 import numpy as np
 from tensorflow.keras.preprocessing import image
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import io
 from tqdm import tqdm
 import concurrent.futures
-import time
 
 style = {
-    12: 'Impressionism',
-    21: 'Realism',
-    4: 'Baroque',
-    20: 'Post Impressionism',
-    23: 'Romanticism',
-    3: 'Art Nouveau',
-    17: 'Northern Renaissance',
-    24: 'Symbolism',
-    15: 'Naive Art Primitivism',
-    9: 'Expressionism',
-    7: 'Cubism',
-    2: 'Analytical Cubism',
-    10: 'Abstract Expressionism',
-    0: 'Abstract Expressionism',
-    18: 'Pointillism',
+    0: "Abstract Expressionism",
+    1: "Action painting",
+    2: "Analytical Cubism",
+    3: "Art Nouveau",
+    4: "Baroque",
+    5: "Color Field Painting",
+    6: "Contemporary Realism",
+    7: "Cubism",
+    8: "Early Renaissance",
+    9: "Expressionism",
+    10: "Fauvism",
+    11: "High Renaissance",
+    12: "Impressionism",
+    13: "Mannerism Late Renaissance",
+    14: "Minimalism",
+    15: "Naive Art Primitivism",
+    16: "New Realism",
+    17: "Northern Renaissance",
+    18: "Pointillism",
+    19: "Pop Art",
+    20: "Post Impressionism",
+    21: "Realism",
+    22: "Rococo",
+    23: "Romanticism",
+    24: "Symbolism",
+    25: "Synthetic Cubism",
+    26: "Ukiyo e"
 }
 
 # Function to preprocess data
@@ -71,6 +81,8 @@ def load_data(num_samples):
     while len(data) < num_samples:
         batch_size = min(num_samples - len(data), 100)
         batch_data = fetch_data(offset, batch_size)
+        if len(batch_data['rows']) == 0:
+            break
         if batch_data is None:
             continue
         data.extend(batch_data['rows'])
@@ -92,7 +104,7 @@ except IOError:
     print("Model not found. Defining and training a new model.")
 
     # Load and preprocess data
-    num_samples = 30000
+    num_samples = 500 #11320
     data = load_data(num_samples)
     if data is None:
         exit()
@@ -124,7 +136,7 @@ except IOError:
 
     y_mapped = np.array([label_map[label] for label in y])
 
-    X_train, X_val, y_train, y_val = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X, y_mapped, test_size=0.15, random_state=42)
 
     # Data augmentation
     train_datagen = ImageDataGenerator(
@@ -140,22 +152,29 @@ except IOError:
 
     val_datagen = ImageDataGenerator(rescale=1./255)
 
-    train_generator = train_datagen.flow(X_train, y_train, batch_size=32)
-    val_generator = val_datagen.flow(X_val, y_val, batch_size=32)
+    train_generator = train_datagen.flow(X_train, y_train, batch_size=256)
+    val_generator = val_datagen.flow(X_val, y_val, batch_size=256)
 
     # Define and compile the model with increased dropout
     model = Sequential([
         Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3)),
+        Conv2D(32, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
+        Dropout(0.2),  # Add dropout for regularization
+        
+        Conv2D(64, (3, 3), activation='relu'),
         Conv2D(64, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
+        Dropout(0.2),  # Add dropout for regularization
+        
+        Conv2D(128, (3, 3), activation='relu'),
         Conv2D(128, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
-        Conv2D(128, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
+        Dropout(0.2),  # Add dropout for regularization
+        
         Flatten(),
         Dense(512, activation='relu'),
-        Dropout(0.6),  # Increased dropout rate
+        Dropout(0.5),  # Increase dropout rate
         Dense(len(unique_labels), activation='softmax')
     ])
 
@@ -164,10 +183,12 @@ except IOError:
                   metrics=['accuracy'])
 
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
+    checkpoint = ModelCheckpoint('best_model.keras', monitor='val_accuracy', mode='max', save_best_only=True)
+    
     # Train the model
     print("Training the model...")
-    history = model.fit(train_generator, epochs=50, validation_data=val_generator, callbacks=[early_stopping])
+    history = model.fit(train_generator, epochs=50, validation_data=val_generator, callbacks=[early_stopping, reduce_lr, checkpoint])
 
     model.save(model_path)
     print("Model saved.")
@@ -199,7 +220,7 @@ except IOError:
         plt.plot(epochs_range, val_loss, label='Validation Loss')
         plt.legend(loc='upper right')
         plt.title('Training and Validation Loss')
-        plt.show()
+        plt.savefig('training_validation_plot.png')
 
 # Function to preprocess a new image
 def preprocess_new_image(img_path):
